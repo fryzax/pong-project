@@ -44,6 +44,17 @@ wheels/
 # Model checkpoints (keep only best_model.pth)
 checkpoint_*.pth
 
+# Fine-tuning outputs (excluding structure)
+ppo_pong_finetuned_*/metrics.json
+ppo_pong_finetuned_*/best_model.pth
+ppo_pong_finetuned_*/checkpoint_*.pth
+ppo_pong_finetuned_*/tensorboard/
+ppo_pong_finetuned_*/finetuning_results.png
+
+# Performance reports
+performance_report.txt
+performance_comparison.png
+
 # Logs
 *.log
 Pong_project.code-workspace
