@@ -1,0 +1,9 @@
+torch
+gymnasium
+ale-py
+scipy
+numpy
+matplotlib
+pandas
+pygame
+tensorboard
