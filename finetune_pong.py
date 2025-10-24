@@ -61,7 +61,7 @@ class CNNPolicy(nn.Module):
             dist = Categorical(probs)
             action = dist.sample()
             log_prob = dist.log_prob(action)
-        return action.item(), log_prob.item(), value.item()
+        return action, log_prob.detach(), value.detach()
     
     def evaluate_actions(self, states, actions):
         """Evaluate actions for PPO update"""
@@ -110,7 +110,7 @@ class PPOAgent:
     """Proximal Policy Optimization Agent"""
     def __init__(self, input_channels, n_actions, lr=3e-4, gamma=0.99, 
                  gae_lambda=0.95, clip_epsilon=0.2, c1=0.5, c2=0.01,
-                 epochs=4, batch_size=64):
+                 epochs=2, batch_size=64):
         
         self.gamma = gamma
         self.gae_lambda = gae_lambda
@@ -122,6 +122,12 @@ class PPOAgent:
         
         self.policy = CNNPolicy(input_channels, n_actions).to(device)
         self.optimizer = optim.Adam(self.policy.parameters(), lr=lr)
+        self.scheduler = torch.optim.lr_scheduler.LinearLR(
+        self.optimizer,
+        start_factor=1.0,  # LR initial
+        end_factor=0.1,    # LR final = 0.1 × initial
+        total_iters=1000   # nombre total d’updates avant d’atteindre end_factor
+    )
         self.buffer = RolloutBuffer()
         
     def select_action(self, state):
@@ -163,7 +169,7 @@ class PPOAgent:
         advantages, returns = self.compute_gae(rewards, values, dones, next_value)
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         
-        states_tensor = torch.FloatTensor(np.array(states)).to(device)
+        states_tensor = torch.tensor(np.stack(states), dtype=torch.float32, device=device)
         actions_tensor = torch.LongTensor(actions).to(device)
         old_log_probs_tensor = torch.FloatTensor(old_log_probs).to(device)
         
@@ -215,9 +221,10 @@ class PPOAgent:
                 total_value_loss += value_loss.item()
                 total_entropy += entropy.mean().item()
                 update_count += 1
-        
+        self.scheduler.step()
         self.buffer.clear()
-        
+        self.c2 = max(0.001, self.c2 * 0.995)
+
         return {
             'total_loss': total_loss / update_count,
             'policy_loss': total_policy_loss / update_count,
@@ -325,7 +332,8 @@ def preprocess_observation(obs):
     gray = np.dot(obs[..., :3], [0.2989, 0.5870, 0.1140])
     
     from scipy.ndimage import zoom
-    resized = zoom(gray, (84/210, 84/160), order=1)
+    import cv2
+    resized = cv2.resize(gray, (84, 84), interpolation=cv2.INTER_AREA)
     
     return resized.astype(np.float32)
 
@@ -346,7 +354,7 @@ def stack_frames(stacked_frames, frame, is_new_episode, stack_size=4):
 # ==================== Fine-tuning Function ====================
 def finetune_ppo_pong(base_model_path, n_episodes=500, max_steps=10000, 
                       update_every=2048, save_every=50, log_every=10,
-                      lr=1e-4, gamma=0.99, clip_epsilon=0.2):
+                      lr=5e-5, gamma=0.99, clip_epsilon=0.2):
     """
     Fine-tune PPO agent on Pong with performance tracking
     """
@@ -373,10 +381,10 @@ def finetune_ppo_pong(base_model_path, n_episodes=500, max_steps=10000,
         gamma=gamma,
         gae_lambda=0.95,
         clip_epsilon=clip_epsilon,
-        c1=0.5,
+        c1=0.3,
         c2=0.01,
-        epochs=4,
-        batch_size=256
+        epochs=2,
+        batch_size=128
     )
     
     # Load base model
@@ -405,8 +413,8 @@ def finetune_ppo_pong(base_model_path, n_episodes=500, max_steps=10000,
         'gamma': gamma,
         'clip_epsilon': clip_epsilon,
         'gae_lambda': 0.95,
-        'batch_size': 256,
-        'epochs': 4,
+        'batch_size': 128,
+        'epochs': 2,
         'timestamp': timestamp,
         'device': str(device)
     }

@@ -1,0 +1,14 @@
+{
+    "base_model": "ppo_pong_finetuned_20251024_194634/best_model.pth",
+    "n_episodes": 100,
+    "max_steps": 10000,
+    "update_every": 2048,
+    "learning_rate": 0.0001,
+    "gamma": 0.99,
+    "clip_epsilon": 0.2,
+    "gae_lambda": 0.95,
+    "batch_size": 128,
+    "epochs": 2,
+    "timestamp": "20251024_203801",
+    "device": "cpu"
+}
