@@ -1,3 +1,5 @@
+#Python script for the training of the model from scratch
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -11,14 +13,11 @@ from collections import deque
 import os
 from datetime import datetime
 
-# Register ALE environments
 gym.register_envs(ale_py)
 
-# Set device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
-# ==================== CNN Policy Network ====================
 class CNNPolicy(nn.Module):
     """
     Convolutional Neural Network for processing Atari frames
@@ -27,7 +26,6 @@ class CNNPolicy(nn.Module):
     def __init__(self, input_channels, n_actions):
         super(CNNPolicy, self).__init__()
         
-        # Convolutional layers for feature extraction
         self.conv1 = nn.Conv2d(input_channels, 32, kernel_size=8, stride=4)
         self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2)
         self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1)
@@ -35,31 +33,23 @@ class CNNPolicy(nn.Module):
         # Calculate size after convolutions (for 210x160 input after preprocessing to 84x84)
         self.fc_input_size = 64 * 7 * 7  # After convolutions on 84x84 image
         
-        # Shared feature layer
         self.fc1 = nn.Linear(self.fc_input_size, 512)
         
-        # Actor head (policy)
         self.actor = nn.Linear(512, n_actions)
         
-        # Critic head (value function)
         self.critic = nn.Linear(512, 1)
         
     def forward(self, x):
-        # Normalize pixel values
         x = x / 255.0
         
-        # Convolutional layers with ReLU activation
         x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
         x = F.relu(self.conv3(x))
         
-        # Flatten
         x = x.view(x.size(0), -1)
         
-        # Shared layer
         x = F.relu(self.fc1(x))
         
-        # Get policy logits and value estimate
         action_logits = self.actor(x)
         value = self.critic(x)
         
@@ -88,7 +78,6 @@ class CNNPolicy(nn.Module):
         return log_probs, values.squeeze(), entropy
 
 
-# ==================== Experience Buffer ====================
 class RolloutBuffer:
     """
     Storage for trajectories collected during rollout
@@ -122,7 +111,6 @@ class RolloutBuffer:
                 self.values, self.log_probs, self.dones)
 
 
-# ==================== PPO Agent ====================
 class PPOAgent:
     """
     Proximal Policy Optimization Agent
@@ -139,11 +127,9 @@ class PPOAgent:
         self.epochs = epochs
         self.batch_size = batch_size
         
-        # Initialize policy network
         self.policy = CNNPolicy(input_channels, n_actions).to(device)
         self.optimizer = optim.Adam(self.policy.parameters(), lr=lr)
         
-        # Rollout buffer
         self.buffer = RolloutBuffer()
         
     def select_action(self, state):
@@ -170,7 +156,6 @@ class PPOAgent:
             # TD error: δ_t = r_t + γ * V(s_{t+1}) - V(s_t)
             delta = rewards[t] + self.gamma * next_value * (1 - dones[t]) - values[t]
             
-            # GAE: A_t = δ_t + (γλ) * δ_{t+1} + (γλ)^2 * δ_{t+2} + ...
             gae = delta + self.gamma * self.gae_lambda * (1 - dones[t]) * gae
             advantages.insert(0, gae)
             
@@ -183,22 +168,18 @@ class PPOAgent:
         """
         Update policy using PPO algorithm
         """
-        # Get data from buffer
         states, actions, rewards, values, old_log_probs, dones = self.buffer.get()
         
-        # Get next value for GAE computation
         with torch.no_grad():
             next_state_tensor = torch.FloatTensor(next_state).unsqueeze(0).to(device)
             _, next_value = self.policy(next_state_tensor)
             next_value = next_value.item()
         
-        # Compute advantages and returns
         advantages, returns = self.compute_gae(rewards, values, dones, next_value)
         
         # Normalize advantages
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
         
-        # Convert to tensors
         states_tensor = torch.FloatTensor(np.array(states)).to(device)
         actions_tensor = torch.LongTensor(actions).to(device)
         old_log_probs_tensor = torch.FloatTensor(old_log_probs).to(device)
@@ -211,7 +192,6 @@ class PPOAgent:
         update_count = 0
         
         for _ in range(self.epochs):
-            # Generate random indices for mini-batch sampling
             indices = np.arange(len(states))
             np.random.shuffle(indices)
             
@@ -219,52 +199,40 @@ class PPOAgent:
                 end = start + self.batch_size
                 batch_indices = indices[start:end]
                 
-                # Get batch data
                 batch_states = states_tensor[batch_indices]
                 batch_actions = actions_tensor[batch_indices]
                 batch_old_log_probs = old_log_probs_tensor[batch_indices]
                 batch_advantages = advantages[batch_indices]
                 batch_returns = returns[batch_indices]
                 
-                # Evaluate actions with current policy
                 log_probs, values, entropy = self.policy.evaluate_actions(batch_states, batch_actions)
                 
-                # Compute ratio for PPO
                 ratio = torch.exp(log_probs - batch_old_log_probs)
                 
-                # Compute surrogate losses
                 surr1 = ratio * batch_advantages
                 surr2 = torch.clamp(ratio, 1.0 - self.clip_epsilon, 1.0 + self.clip_epsilon) * batch_advantages
                 
-                # Policy loss (negative because we want to maximize)
                 policy_loss = -torch.min(surr1, surr2).mean()
                 
-                # Value loss
                 value_loss = F.mse_loss(values, batch_returns)
                 
-                # Entropy bonus (for exploration)
                 entropy_loss = -entropy.mean()
                 
-                # Total loss
                 loss = policy_loss + self.c1 * value_loss + self.c2 * entropy_loss
                 
-                # Update network
                 self.optimizer.zero_grad()
                 loss.backward()
                 nn.utils.clip_grad_norm_(self.policy.parameters(), 0.5)
                 self.optimizer.step()
                 
-                # Track losses
                 total_loss += loss.item()
                 total_policy_loss += policy_loss.item()
                 total_value_loss += value_loss.item()
                 total_entropy += entropy.mean().item()
                 update_count += 1
         
-        # Clear buffer
         self.buffer.clear()
         
-        # Return average losses
         return {
             'total_loss': total_loss / update_count,
             'policy_loss': total_policy_loss / update_count,
@@ -273,7 +241,6 @@ class PPOAgent:
         }
 
 
-# ==================== Preprocessing ====================
 def preprocess_observation(obs):
     """
     Preprocess Atari frame:
@@ -301,34 +268,28 @@ def stack_frames(stacked_frames, frame, is_new_episode, stack_size=4):
     frame = preprocess_observation(frame)
     
     if is_new_episode:
-        # Clear stacked_frames and stack the first frame
         stacked_frames = deque([frame for _ in range(stack_size)], maxlen=stack_size)
     else:
         stacked_frames.append(frame)
     
-    # Stack frames along channel dimension
     stacked_state = np.stack(stacked_frames, axis=0)
     
     return stacked_state, stacked_frames
 
 
-# ==================== Training Function ====================
 def train_ppo_pong(n_episodes=5000, max_steps=10000, update_every=2048,
                    save_every=100, log_every=10):
     """
     Train PPO agent on single-agent Pong (Gymnasium)
     """
-    # Create environment
     env = gym.make('ALE/Pong-v5', render_mode=None)
     
-    # Get environment info
     n_actions = env.action_space.n
     
     print(f"Environment: Pong (Gymnasium)")
     print(f"Number of actions: {n_actions}")
     print(f"Observation space: {env.observation_space.shape}")
     
-    # Create agent
     agent = PPOAgent(
         input_channels=4,  # Stacked frames
         n_actions=n_actions,
@@ -347,22 +308,18 @@ def train_ppo_pong(n_episodes=5000, max_steps=10000, update_every=2048,
     episode_lengths = []
     losses = {'policy': [], 'value': [], 'entropy': []}
     
-    # Frame stacking
     stacked_frames = deque(maxlen=4)
     
-    # Create save directory
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     save_dir = f"ppo_pong_{timestamp}"
     os.makedirs(save_dir, exist_ok=True)
     
-    # Training loop
     global_step = 0
     best_avg_reward = -float('inf')
     
     for episode in range(n_episodes):
         observation, info = env.reset()
         
-        # Initialize stacked frames
         state, stacked_frames = stack_frames(stacked_frames, observation, True)
         
         episode_reward = 0
@@ -370,20 +327,15 @@ def train_ppo_pong(n_episodes=5000, max_steps=10000, update_every=2048,
         done = False
         
         while not done and episode_length < max_steps:
-            # Select action
             action, log_prob, value = agent.select_action(state)
             
-            # Store in buffer
             agent.buffer.add(state, action, 0, value, log_prob, False)
             
-            # Step environment
             next_observation, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
             
-            # Stack frames
             next_state, stacked_frames = stack_frames(stacked_frames, next_observation, False)
             
-            # Update reward in buffer
             agent.buffer.rewards[-1] = reward
             agent.buffer.dones[-1] = done
             
@@ -392,18 +344,15 @@ def train_ppo_pong(n_episodes=5000, max_steps=10000, update_every=2048,
             episode_length += 1
             global_step += 1
             
-            # Update agent every update_every steps
             if global_step % update_every == 0:
                 loss_dict = agent.update(state)
                 losses['policy'].append(loss_dict['policy_loss'])
                 losses['value'].append(loss_dict['value_loss'])
                 losses['entropy'].append(loss_dict['entropy'])
         
-        # Record episode metrics
         episode_rewards.append(episode_reward)
         episode_lengths.append(episode_length)
         
-        # Logging
         if (episode + 1) % log_every == 0:
             avg_reward = np.mean(episode_rewards[-100:])
             avg_length = np.mean(episode_lengths[-100:])
@@ -415,7 +364,6 @@ def train_ppo_pong(n_episodes=5000, max_steps=10000, update_every=2048,
             print(f"Episode Reward: {episode_reward:.2f}")
             print(f"{'='*60}")
         
-        # Save models
         if (episode + 1) % save_every == 0:
             avg_reward = np.mean(episode_rewards[-100:])
             
@@ -427,7 +375,6 @@ def train_ppo_pong(n_episodes=5000, max_steps=10000, update_every=2048,
                 )
                 print(f"\n🏆 New best model saved! Avg reward: {best_avg_reward:.2f}")
             
-            # Save checkpoint
             torch.save({
                 'episode': episode,
                 'model_state_dict': agent.policy.state_dict(),
@@ -440,20 +387,18 @@ def train_ppo_pong(n_episodes=5000, max_steps=10000, update_every=2048,
     return episode_rewards, episode_lengths, losses, save_dir
 
 
-# ==================== Visualization ====================
 def plot_training_curves(episode_rewards, episode_lengths, losses, save_dir):
     """
     Plot and save training curves
     """
     fig, axes = plt.subplots(2, 2, figsize=(15, 10))
     
-    # Smooth function
     def smooth(data, window=50):
         if len(data) < window:
             return data
         return np.convolve(data, np.ones(window)/window, mode='valid')
     
-    # Plot 1: Episode Rewards
+    #Episode Rewards
     ax = axes[0, 0]
     rewards = episode_rewards
     ax.plot(smooth(rewards), alpha=0.8, color='blue')
@@ -462,7 +407,7 @@ def plot_training_curves(episode_rewards, episode_lengths, losses, save_dir):
     ax.set_title('Episode Rewards (Smoothed)')
     ax.grid(True, alpha=0.3)
     
-    # Plot 2: Episode Lengths
+    #Episode Lengths
     ax = axes[0, 1]
     ax.plot(smooth(episode_lengths), color='green', alpha=0.8)
     ax.set_xlabel('Episode')
@@ -470,7 +415,7 @@ def plot_training_curves(episode_rewards, episode_lengths, losses, save_dir):
     ax.set_title('Episode Lengths (Smoothed)')
     ax.grid(True, alpha=0.3)
     
-    # Plot 3: Policy Loss
+    #Policy Loss
     ax = axes[1, 0]
     if losses['policy']:
         ax.plot(smooth(losses['policy'], window=10), alpha=0.8, color='red')
@@ -479,7 +424,7 @@ def plot_training_curves(episode_rewards, episode_lengths, losses, save_dir):
     ax.set_title('Policy Loss')
     ax.grid(True, alpha=0.3)
     
-    # Plot 4: Value Loss
+    #Value Loss
     ax = axes[1, 1]
     if losses['value']:
         ax.plot(smooth(losses['value'], window=10), alpha=0.8, color='orange')
@@ -494,7 +439,6 @@ def plot_training_curves(episode_rewards, episode_lengths, losses, save_dir):
     plt.show()
 
 
-# ==================== Evaluation Function ====================
 def evaluate_agents(agent, n_episodes=10, render=True):
     """
     Evaluate trained agent
@@ -507,7 +451,6 @@ def evaluate_agents(agent, n_episodes=10, render=True):
     for episode in range(n_episodes):
         observation, info = env.reset()
         
-        # Initialize frame stacking
         stacked_frames = deque(maxlen=4)
         state, stacked_frames = stack_frames(stacked_frames, observation, True)
         
@@ -524,7 +467,6 @@ def evaluate_agents(agent, n_episodes=10, render=True):
             next_observation, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
             
-            # Update state
             next_state, stacked_frames = stack_frames(stacked_frames, next_observation, False)
             state = next_state
             episode_reward += reward
@@ -534,7 +476,6 @@ def evaluate_agents(agent, n_episodes=10, render=True):
     
     env.close()
     
-    # Print statistics
     print(f"\n{'='*60}")
     print("EVALUATION RESULTS")
     print(f"{'='*60}")
@@ -548,30 +489,25 @@ def evaluate_agents(agent, n_episodes=10, render=True):
     return total_rewards
 
 
-# ==================== Main Execution ====================
 if __name__ == "__main__":
     print("="*60)
     print("PPO FOR ATARI PONG (GYMNASIUM)")
     print("="*60)
     
-    # Training
     print("\n🚀 Starting training...")
     episode_rewards, episode_lengths, losses, save_dir = train_ppo_pong(
-        n_episodes=1000,      # Number of episodes
-        max_steps=10000,      # Max steps per episode
-        update_every=2048,    # Update frequency
-        save_every=50,        # Save frequency
-        log_every=10          # Log frequency
+        n_episodes=1000,      
+        max_steps=10000,      
+        update_every=2048,    
+        save_every=50,        
+        log_every=10          
     )
     
-    # Plot results
     print("\n📊 Generating training curves...")
     plot_training_curves(episode_rewards, episode_lengths, losses, save_dir)
     
-    # Evaluation
     print("\n🎮 Evaluating trained agent...")
     
-    # Load best model
     env = gym.make('ALE/Pong-v5', render_mode=None)
     n_actions = env.action_space.n
     env.close()
@@ -582,7 +518,6 @@ if __name__ == "__main__":
     )
     agent.policy.eval()
     
-    # Evaluate (set render=True to visualize)
     evaluate_agents(agent, n_episodes=20, render=False)
     
     print("\n✅ Training and evaluation complete!")

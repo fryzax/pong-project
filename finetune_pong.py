@@ -1,8 +1,5 @@
-"""
-Script de fine-tuning pour l'agent PPO Pong
-Permet de reprendre l'entraînement depuis un modèle existant
-avec un système complet de suivi des performances
-"""
+#Python Script to fine-tune the PPO Agent on the Pong Model. 
+#Used for around 700 episodes to improve performance by changing hyperparameters
 
 import torch
 import torch.nn as nn
@@ -19,7 +16,6 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 from torch.utils.tensorboard import SummaryWriter
 
-# Register ALE environments
 gym.register_envs(ale_py)
 
 # Set device
@@ -27,7 +23,6 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
 
-# ==================== CNN Policy Network ====================
 class CNNPolicy(nn.Module):
     """Convolutional Neural Network for processing Atari frames"""
     def __init__(self, input_channels, n_actions):
@@ -73,7 +68,6 @@ class CNNPolicy(nn.Module):
         return log_probs, values.squeeze(), entropy
 
 
-# ==================== Experience Buffer ====================
 class RolloutBuffer:
     """Storage for trajectories collected during rollout"""
     def __init__(self):
@@ -105,7 +99,6 @@ class RolloutBuffer:
                 self.values, self.log_probs, self.dones)
 
 
-# ==================== PPO Agent ====================
 class PPOAgent:
     """Proximal Policy Optimization Agent"""
     def __init__(self, input_channels, n_actions, lr=3e-4, gamma=0.99, 
@@ -126,7 +119,7 @@ class PPOAgent:
         self.optimizer,
         start_factor=1.0,  # LR initial
         end_factor=0.1,    # LR final = 0.1 × initial
-        total_iters=1000   # nombre total d’updates avant d’atteindre end_factor
+        total_iters=1000   
     )
         self.buffer = RolloutBuffer()
         
@@ -234,7 +227,6 @@ class PPOAgent:
         }
 
 
-# ==================== Performance Tracker ====================
 class PerformanceTracker:
     """Track and save performance metrics during training"""
     def __init__(self, save_dir, tensorboard=True):
@@ -245,7 +237,6 @@ class PerformanceTracker:
         self.episode_metrics = []
         self.update_metrics = []
         
-        # TensorBoard writer
         self.writer = None
         if tensorboard:
             self.writer = SummaryWriter(log_dir=os.path.join(save_dir, "tensorboard"))
@@ -323,7 +314,6 @@ class PerformanceTracker:
             self.writer.close()
 
 
-# ==================== Preprocessing ====================
 def preprocess_observation(obs):
     """Preprocess Atari frame"""
     if obs is None:
@@ -375,14 +365,14 @@ def finetune_ppo_pong(base_model_path, n_episodes=500, max_steps=10000,
         n_actions=n_actions,
         lr=lr,
         gamma=gamma,
-        gae_lambda=0.95,
-        clip_epsilon=clip_epsilon,
         c1=0.3,
-        c2=0.01,
-        epochs=2,
-        batch_size=128
+        gae_lambda=0.97,
+        clip_epsilon=0.1,
+        c2=0.005,
+        epochs=5,
+        batch_size=512
     )
-    
+
     print(f"\n🔄 Loading base model from: {base_model_path}")
     if os.path.exists(base_model_path):
         agent.policy.load_state_dict(torch.load(base_model_path, map_location=device))
@@ -404,9 +394,9 @@ def finetune_ppo_pong(base_model_path, n_episodes=500, max_steps=10000,
         'learning_rate': lr,
         'gamma': gamma,
         'clip_epsilon': clip_epsilon,
-        'gae_lambda': 0.95,
-        'batch_size': 128,
-        'epochs': 2,
+        'gae_lambda': 0.97,
+        'batch_size': 512,
+        'epochs': 5,
         'timestamp': timestamp,
         'device': str(device)
     }
@@ -635,3 +625,5 @@ if __name__ == "__main__":
     
     print("\n💡 To view training progress in TensorBoard, run:")
     print(f"   tensorboard --logdir={os.path.join(save_dir, 'tensorboard')}")
+
+

@@ -1,10 +1,5 @@
-"""
-Script pour jouer INTERACTIVEMENT contre l'agent PPO entraîné
-Contrôles clavier :
-- Flèche HAUT : Monter votre raquette
-- Flèche BAS : Descendre votre raquette
-- ESC ou Q : Quitter
-"""
+#Python Script to play againt our fine tuned model interactively.
+#The player controls their paddle with the keyboard arrows.
 
 import torch
 import torch.nn as nn
@@ -18,13 +13,10 @@ import os
 import pygame
 from pygame.locals import *
 
-# Register ALE environments
 gym.register_envs(ale_py)
 
-# Set device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# ==================== CNN Policy Network ====================
 class CNNPolicy(nn.Module):
     """
     Convolutional Neural Network for processing Atari frames
@@ -53,16 +45,13 @@ class CNNPolicy(nn.Module):
         return action_logits, value
 
 
-# ==================== Preprocessing ====================
 def preprocess_observation(obs):
     """Preprocess Atari frame"""
     if obs is None:
         return np.zeros((1, 84, 84), dtype=np.float32)
     
-    # Convert to grayscale
     gray = np.dot(obs[..., :3], [0.2989, 0.5870, 0.1140])
     
-    # Resize to 84x84
     from scipy.ndimage import zoom
     resized = zoom(gray, (84/210, 84/160), order=1)
     
@@ -82,23 +71,17 @@ def stack_frames(stacked_frames, frame, is_new_episode, stack_size=4):
     return stacked_state, stacked_frames
 
 
-# ==================== Interactive Play Function ====================
 def play_interactive_against_agent(model_path, n_games=5):
     """
     Jouer INTERACTIVEMENT contre l'agent entraîné
     Le joueur contrôle sa raquette avec les flèches du clavier
     """
-    # Initialize pygame
     pygame.init()
     
-    # Create environment with rgb_array for pygame display
     env = gym.make('ALE/Pong-v5', render_mode='rgb_array')
     n_actions = env.action_space.n
     
-    # Pong action mapping:
-    # 0 = NOOP, 1 = FIRE, 2 = RIGHT (UP), 3 = LEFT (DOWN), 4 = RIGHTFIRE, 5 = LEFTFIRE
     
-    # Load trained agent
     print("🤖 Chargement de l'agent entraîné...")
     agent_policy = CNNPolicy(input_channels=4, n_actions=n_actions).to(device)
     
@@ -112,13 +95,11 @@ def play_interactive_against_agent(model_path, n_games=5):
         pygame.quit()
         return
     
-    # Setup pygame window
     screen_width, screen_height = 640, 480
     screen = pygame.display.set_mode((screen_width, screen_height))
     pygame.display.set_caption("Pong - Vous vs Agent PPO")
     clock = pygame.time.Clock()
     
-    # Font for text
     font = pygame.font.Font(None, 36)
     small_font = pygame.font.Font(None, 24)
     
@@ -138,7 +119,6 @@ def play_interactive_against_agent(model_path, n_games=5):
     for game in range(n_games):
         observation, info = env.reset()
         
-        # Initialize frame stacking
         stacked_frames = deque(maxlen=4)
         state, stacked_frames = stack_frames(stacked_frames, observation, True)
         
@@ -148,14 +128,12 @@ def play_interactive_against_agent(model_path, n_games=5):
         done = False
         frame_count = 0
         
-        # Player action (0 = NOOP by default)
         player_action = 0
         
         print(f"\n🎯 Partie {game + 1}/{n_games}")
         print("Appuyez sur les flèches HAUT/BAS pour jouer!")
         
         while not done:
-            # Handle pygame events
             for event in pygame.event.get():
                 if event.type == QUIT:
                     pygame.quit()
@@ -167,7 +145,6 @@ def play_interactive_against_agent(model_path, n_games=5):
                         env.close()
                         return
             
-            # Get keyboard input for player
             keys = pygame.key.get_pressed()
             if keys[K_UP]:
                 player_action = 2  # RIGHT (UP)
@@ -176,60 +153,49 @@ def play_interactive_against_agent(model_path, n_games=5):
             else:
                 player_action = 0  # NOOP
             
-            # Agent selects action
             state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
             with torch.no_grad():
                 logits, _ = agent_policy(state_tensor)
                 probs = F.softmax(logits, dim=-1)
                 agent_action = torch.argmax(probs, dim=-1).item()
             
-            # Use player action instead of agent action
             action = player_action
             
-            # Step environment
             next_observation, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
             
-            # Update scores based on reward
             if reward > 0:
                 player_score += 1
             elif reward < 0:
                 agent_score += 1
             
-            # Update state
             next_state, stacked_frames = stack_frames(stacked_frames, next_observation, False)
             state = next_state
             game_reward += reward
             frame_count += 1
             
-            # Render game
             frame = env.render()
             if frame is not None:
-                # Convert frame to pygame surface
                 frame = np.transpose(frame, (1, 0, 2))
                 surf = pygame.surfarray.make_surface(frame)
                 surf = pygame.transform.scale(surf, (screen_width, screen_height))
                 screen.blit(surf, (0, 0))
                 
-                # Draw scores
                 score_text = font.render(f"Agent: {agent_score}  Vous: {player_score}", True, (255, 255, 255))
                 screen.blit(score_text, (screen_width // 2 - score_text.get_width() // 2, 10))
                 
-                # Draw controls reminder
                 controls_text = small_font.render("↑/↓ pour bouger | ESC pour quitter", True, (200, 200, 200))
                 screen.blit(controls_text, (screen_width // 2 - controls_text.get_width() // 2, screen_height - 30))
                 
                 pygame.display.flip()
                 clock.tick(15)  # 15 FPS (ralenti pour mieux jouer)
             
-            # Print score updates
             if reward != 0:
                 if reward > 0:
                     print(f"  🏆 Vous marquez! Score: Agent {agent_score} - Vous {player_score}")
                 else:
                     print(f"  😞 Agent marque! Score: Agent {agent_score} - Vous {player_score}")
         
-        # Game result
         print(f"\n📊 Fin de la partie {game + 1}")
         print(f"  Score final: Agent {agent_score} - Vous {player_score}")
         print(f"  Nombre de frames: {frame_count}")
@@ -243,13 +209,11 @@ def play_interactive_against_agent(model_path, n_games=5):
         else:
             print("  🤝 Égalité!")
         
-        # Wait a bit before next game
         pygame.time.wait(2000)
     
     env.close()
     pygame.quit()
     
-    # Final statistics
     print("\n" + "="*60)
     print("📈 STATISTIQUES FINALES")
     print("="*60)
@@ -260,7 +224,6 @@ def play_interactive_against_agent(model_path, n_games=5):
     print("="*60 + "\n")
 
 
-# ==================== Main ====================
 if __name__ == "__main__":
     import argparse
     
@@ -272,12 +235,10 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    # Find the most recent trained model if not specified
     if args.model is None:
         import glob
         model_dirs = glob.glob('ppo_pong_*')
         if model_dirs:
-            # Sort by modification time
             model_dirs.sort(key=os.path.getmtime, reverse=True)
             model_path = os.path.join(model_dirs[0], 'best_model.pth')
             print(f"📁 Utilisation du modèle: {model_path}")

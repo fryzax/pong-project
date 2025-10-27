@@ -2,4 +2,4 @@
 
 from finetune_pong import plot_finetuning_results
 
-plot_finetuning_results("ppo_pong_finetuned_20251024_210742")
+plot_finetuning_results("ppo_pong_finetuned_20251027_142814")
