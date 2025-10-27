@@ -1,3 +1,5 @@
+#Python Script to compare two trained models to compare the fine-tuning performance
+
 import torch
 import gymnasium as gym
 import numpy as np
@@ -31,15 +33,13 @@ def evaluate_model(model_path, n_episodes=20):
 
 
 if __name__ == "__main__":
-    # === Modèles à comparer ===
-    base_model = "ppo_pong_20251021_110351/best_model.pth"     # ← modèle avant fine-tune
-    finetuned_model = "ppo_pong_final_best.pth"                 # ← ton modèle final
-
+    base_model = "ppo_pong_finetuned_20251024_194634/best_model.pth"     
+    finetuned_model = "ppo_pong_final_best.pth"                 
     base_mean, base_std = evaluate_model(base_model)
     fine_mean, fine_std = evaluate_model(finetuned_model)
 
-    print("\n📊 COMPARAISON DES MODÈLES")
+    print("\nModel Comparison")
     print("──────────────────────────")
-    print(f"Avant fine-tuning  : {base_mean:.2f} ± {base_std:.2f}")
-    print(f"Après fine-tuning  : {fine_mean:.2f} ± {fine_std:.2f}")
-    print(f"Gain moyen          : {fine_mean - base_mean:.2f} points de reward\n")
+    print(f"Before fine-tuning  : {base_mean:.2f} ± {base_std:.2f}")
+    print(f"After fine-tuning  : {fine_mean:.2f} ± {fine_std:.2f}")
+    print(f"Average gain         : {fine_mean - base_mean:.2f} rewards points\n")

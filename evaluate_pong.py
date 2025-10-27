@@ -1,3 +1,5 @@
+#Python script to evaluate a trained model on a number of episodes we choose 
+
 import torch
 import gymnasium as gym
 import numpy as np

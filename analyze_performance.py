@@ -1,7 +1,4 @@
-"""
-Script d'analyse des performances des modèles PPO Pong
-Permet de comparer plusieurs modèles et générer des rapports détaillés
-"""
+#Python script to compare performance metrics of multiple models we trained
 
 import json
 import os
@@ -163,7 +160,7 @@ def plot_comparison(models_data, save_path=None):
     ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
     
-    # Plot 2: Episode lengths
+    #Episode lengths
     ax = axes[0, 1]
     for i, model in enumerate(models_data):
         episodes = model['episodes']
@@ -180,7 +177,7 @@ def plot_comparison(models_data, save_path=None):
     ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
     
-    # Plot 3: Final performance (bar chart)
+    #Final performance
     ax = axes[1, 0]
     names = [m['name'][:20] for m in models_data]
     final_rewards = [m['stats']['final_avg_reward'] for m in models_data]
@@ -194,14 +191,13 @@ def plot_comparison(models_data, save_path=None):
     ax.set_title('Performance Finale')
     ax.grid(True, alpha=0.3, axis='y')
     
-    # Add value labels on bars
     for i, (bar, val, std) in enumerate(zip(bars, final_rewards, final_stds)):
         height = bar.get_height()
         ax.text(bar.get_x() + bar.get_width()/2., height,
                 f'{val:.1f}±{std:.1f}',
                 ha='center', va='bottom', fontsize=8)
     
-    # Plot 4: Distribution of rewards (box plot)
+    #Distribution of rewards 
     ax = axes[1, 1]
     reward_data = []
     for model in models_data:

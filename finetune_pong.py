@@ -350,8 +350,6 @@ def stack_frames(stacked_frames, frame, is_new_episode, stack_size=4):
     stacked_state = np.stack(stacked_frames, axis=0)
     return stacked_state, stacked_frames
 
-
-# ==================== Fine-tuning Function ====================
 def finetune_ppo_pong(base_model_path, n_episodes=500, max_steps=10000, 
                       update_every=2048, save_every=50, log_every=10,
                       lr=5e-5, gamma=0.99, clip_epsilon=0.2):
@@ -362,7 +360,6 @@ def finetune_ppo_pong(base_model_path, n_episodes=500, max_steps=10000,
     print("FINE-TUNING PPO AGENT ON PONG")
     print("="*60)
     
-    # Create environment
     env = gym.make('ALE/Pong-v5', render_mode=None)
     n_actions = env.action_space.n
     
@@ -373,7 +370,6 @@ def finetune_ppo_pong(base_model_path, n_episodes=500, max_steps=10000,
     print(f"  Gamma: {gamma}")
     print(f"  Clip epsilon: {clip_epsilon}")
     
-    # Create agent
     agent = PPOAgent(
         input_channels=4,
         n_actions=n_actions,
@@ -387,7 +383,6 @@ def finetune_ppo_pong(base_model_path, n_episodes=500, max_steps=10000,
         batch_size=128
     )
     
-    # Load base model
     print(f"\n🔄 Loading base model from: {base_model_path}")
     if os.path.exists(base_model_path):
         agent.policy.load_state_dict(torch.load(base_model_path, map_location=device))
@@ -395,15 +390,12 @@ def finetune_ppo_pong(base_model_path, n_episodes=500, max_steps=10000,
     else:
         print("❌ Base model not found! Training from scratch...")
     
-    # Create save directory
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     save_dir = f"ppo_pong_finetuned_{timestamp}"
     os.makedirs(save_dir, exist_ok=True)
     
-    # Initialize performance tracker
     tracker = PerformanceTracker(save_dir, tensorboard=True)
     
-    # Save configuration
     config = {
         'base_model': base_model_path,
         'n_episodes': n_episodes,
@@ -424,7 +416,6 @@ def finetune_ppo_pong(base_model_path, n_episodes=500, max_steps=10000,
     print(f"📊 TensorBoard logs: {os.path.join(save_dir, 'tensorboard')}")
     print(f"\n🚀 Starting fine-tuning...\n")
     
-    # Training loop
     global_step = 0
     best_avg_reward = -float('inf')
     stacked_frames = deque(maxlen=4)
@@ -454,15 +445,12 @@ def finetune_ppo_pong(base_model_path, n_episodes=500, max_steps=10000,
             episode_length += 1
             global_step += 1
             
-            # Update agent
             if global_step % update_every == 0:
                 loss_dict = agent.update(state)
                 tracker.log_update(episode, loss_dict)
         
-        # Log episode metrics
         tracker.log_episode(episode, episode_reward, episode_length, global_step)
         
-        # Logging
         if (episode + 1) % log_every == 0:
             stats = tracker.get_statistics(window=100)
             
@@ -476,12 +464,10 @@ def finetune_ppo_pong(base_model_path, n_episodes=500, max_steps=10000,
             print(f"  Avg Length (last 100): {stats['avg_length']:.2f}")
             print(f"{'='*60}")
         
-        # Save models
         if (episode + 1) % save_every == 0:
             stats = tracker.get_statistics(window=100)
             avg_reward = stats['avg_reward']
             
-            # Save checkpoint
             checkpoint = {
                 'episode': episode,
                 'global_step': global_step,
@@ -492,13 +478,11 @@ def finetune_ppo_pong(base_model_path, n_episodes=500, max_steps=10000,
             }
             torch.save(checkpoint, os.path.join(save_dir, f"checkpoint_ep{episode+1}.pth"))
             
-            # Save best model
             if avg_reward > best_avg_reward:
                 best_avg_reward = avg_reward
                 torch.save(agent.policy.state_dict(), os.path.join(save_dir, "best_model.pth"))
                 print(f"\n🏆 New best model saved! Avg reward: {best_avg_reward:.2f}")
             
-            # Save metrics
             tracker.save_metrics()
     
     env.close()
@@ -515,7 +499,6 @@ def finetune_ppo_pong(base_model_path, n_episodes=500, max_steps=10000,
     return save_dir, tracker
 
 
-# ==================== Visualization ====================
 def plot_finetuning_results(save_dir):
     """Plot fine-tuning results from saved metrics"""
     metrics_file = os.path.join(save_dir, "metrics.json")
@@ -530,21 +513,18 @@ def plot_finetuning_results(save_dir):
     episodes = metrics['episodes']
     updates = metrics['updates']
     
-    # Extract data
     episode_nums = [e['episode'] for e in episodes]
     rewards = [e['reward'] for e in episodes]
     lengths = [e['length'] for e in episodes]
     
-    # Smooth function
     def smooth(data, window=50):
         if len(data) < window:
             return data
         return np.convolve(data, np.ones(window)/window, mode='valid')
     
-    # Create plots
     fig, axes = plt.subplots(2, 3, figsize=(18, 10))
     
-    # Plot 1: Episode Rewards
+    #Episode Rewards
     ax = axes[0, 0]
     ax.plot(episode_nums, rewards, alpha=0.3, color='blue', label='Raw')
     ax.plot(smooth(rewards), alpha=0.8, color='blue', linewidth=2, label='Smoothed')
@@ -554,7 +534,7 @@ def plot_finetuning_results(save_dir):
     ax.legend()
     ax.grid(True, alpha=0.3)
     
-    # Plot 2: Episode Lengths
+    #Episode Lengths
     ax = axes[0, 1]
     ax.plot(episode_nums, lengths, alpha=0.3, color='green', label='Raw')
     ax.plot(smooth(lengths), color='green', alpha=0.8, linewidth=2, label='Smoothed')
@@ -564,7 +544,7 @@ def plot_finetuning_results(save_dir):
     ax.legend()
     ax.grid(True, alpha=0.3)
     
-    # Plot 3: Rolling Average Reward
+    #Rolling Average Reward
     ax = axes[0, 2]
     window = min(100, len(rewards))
     rolling_avg = [np.mean(rewards[max(0, i-window):i+1]) for i in range(len(rewards))]
@@ -574,7 +554,7 @@ def plot_finetuning_results(save_dir):
     ax.set_title(f'Rolling Average Reward (window={window})')
     ax.grid(True, alpha=0.3)
     
-    # Plot 4: Policy Loss
+    #Policy Loss
     ax = axes[1, 0]
     if updates:
         policy_losses = [u['policy_loss'] for u in updates]
@@ -584,7 +564,7 @@ def plot_finetuning_results(save_dir):
         ax.set_title('Policy Loss')
         ax.grid(True, alpha=0.3)
     
-    # Plot 5: Value Loss
+    #Value Loss
     ax = axes[1, 1]
     if updates:
         value_losses = [u['value_loss'] for u in updates]
@@ -594,7 +574,7 @@ def plot_finetuning_results(save_dir):
         ax.set_title('Value Loss')
         ax.grid(True, alpha=0.3)
     
-    # Plot 6: Entropy
+    #Entropy
     ax = axes[1, 2]
     if updates:
         entropies = [u['entropy'] for u in updates]
@@ -610,7 +590,6 @@ def plot_finetuning_results(save_dir):
     plt.show()
 
 
-# ==================== Main ====================
 if __name__ == "__main__":
     import argparse
     
@@ -630,7 +609,6 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    # Find base model if not specified
     if args.model is None:
         import glob
         model_dirs = glob.glob('ppo_pong_*')
@@ -644,7 +622,6 @@ if __name__ == "__main__":
     else:
         base_model_path = args.model
     
-    # Fine-tune
     save_dir, tracker = finetune_ppo_pong(
         base_model_path=base_model_path,
         n_episodes=args.episodes,
@@ -653,7 +630,6 @@ if __name__ == "__main__":
         clip_epsilon=args.clip
     )
     
-    # Plot results
     if args.plot:
         plot_finetuning_results(save_dir)
     
