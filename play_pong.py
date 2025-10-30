@@ -80,16 +80,13 @@ def stack_frames(stacked_frames, frame, is_new_episode, stack_size=4):
     return stacked_state, stacked_frames
 
 
-# ==================== Play Function ====================
 def play_against_agent(model_path, n_games=5):
     """
     Jouer contre l'agent entraîné
     """
-    # Create environment with human rendering
     env = gym.make('ALE/Pong-v5', render_mode='human')
     n_actions = env.action_space.n
     
-    # Load trained agent
     print("🤖 Chargement de l'agent entraîné...")
     agent_policy = CNNPolicy(input_channels=4, n_actions=n_actions).to(device)
     
@@ -118,7 +115,6 @@ def play_against_agent(model_path, n_games=5):
     for game in range(n_games):
         observation, info = env.reset()
         
-        # Initialize frame stacking
         stacked_frames = deque(maxlen=4)
         state, stacked_frames = stack_frames(stacked_frames, observation, True)
         
@@ -129,31 +125,26 @@ def play_against_agent(model_path, n_games=5):
         print(f"\n🎯 Partie {game + 1}/{n_games}")
         
         while not done:
-            # Agent selects action
             state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
             with torch.no_grad():
                 logits, _ = agent_policy(state_tensor)
                 probs = F.softmax(logits, dim=-1)
                 action = torch.argmax(probs, dim=-1).item()
             
-            # Step environment
             next_observation, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
             
-            # Update state
             next_state, stacked_frames = stack_frames(stacked_frames, next_observation, False)
             state = next_state
             game_reward += reward
             frame_count += 1
             
-            # Print score updates
             if reward != 0:
                 if reward > 0:
                     print(f"  🏆 Agent marque! (+{reward:.0f})")
                 else:
                     print(f"  😞 Vous marquez! ({reward:.0f})")
         
-        # Game result
         print(f"\n📊 Fin de la partie {game + 1}")
         print(f"  Score final: {game_reward:.0f}")
         print(f"  Nombre de frames: {frame_count}")
@@ -169,7 +160,6 @@ def play_against_agent(model_path, n_games=5):
     
     env.close()
     
-    # Final statistics
     print("\n" + "="*60)
     print("📈 STATISTIQUES FINALES")
     print("="*60)
@@ -180,16 +170,13 @@ def play_against_agent(model_path, n_games=5):
     print("="*60 + "\n")
 
 
-# ==================== Demo Mode ====================
 def watch_agent_play(model_path, n_games=3):
     """
     Regarder l'agent jouer seul
     """
-    # Create environment with human rendering
     env = gym.make('ALE/Pong-v5', render_mode='human')
     n_actions = env.action_space.n
     
-    # Load trained agent
     print("🤖 Chargement de l'agent entraîné...")
     agent_policy = CNNPolicy(input_channels=4, n_actions=n_actions).to(device)
     
@@ -249,7 +236,6 @@ def watch_agent_play(model_path, n_games=3):
     print("="*60 + "\n")
 
 
-# ==================== Main ====================
 if __name__ == "__main__":
     import argparse
     
@@ -263,12 +249,10 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    # Find the most recent trained model if not specified
     if args.model is None:
         import glob
         model_dirs = glob.glob('ppo_pong_*')
         if model_dirs:
-            # Sort by modification time
             model_dirs.sort(key=os.path.getmtime, reverse=True)
             model_path = os.path.join(model_dirs[0], 'best_model.pth')
             print(f"📁 Utilisation du modèle: {model_path}")
